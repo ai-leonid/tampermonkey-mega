@@ -1,12 +1,10 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.1.0
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
-// @match        *://megamarket.ru/catalog/*
-// @match        *://megamarket.ru/catalog/details/*
-// @match        *://megamarket.ru/promo-page/details/*
+// @match        *://megamarket.ru/*
 // @icon         *://www.google.com/s2/favicons?sz=64&domain=megamarket.ru
 // @grant        none
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js
@@ -162,13 +160,13 @@
       // if ($card.attr('data-parsed') && $card.attr('data-parsed') === '1') {
       //     return true;
       // }
-      $card.attr('data-parsed', 1);
+      // $card.attr('data-parsed', 1);
 
       catalogListingItemsDefaultArr.push($card);
 
       $itemMoney = $card.find('.item-money');
       $itemBonusVal = parseDigitFromElem($itemMoney.find('.item-bonus .bonus-amount'));
-      $itemPriceVal = parseDigitFromElem($itemMoney.find('.item-price span'));
+      $itemPriceVal = parseDigitFromElem($itemMoney.find('.item-price'));
 
       $itemMoney.after(`
         <div class='money-benefit'>
@@ -302,6 +300,9 @@
 
   function initCatalogList() {
     let $catalogListingItemsWrapper = $('.catalog-listing__items');
+    if ($catalogListingItemsWrapper.length === 0) {
+      $catalogListingItemsWrapper = $('.cnc-catalog-listing__items');
+    }
     let $catalogListingItems = $catalogListingItemsWrapper.find('.catalog-item');
     addExtraFieldsToCardsInList($catalogListingItems);
 
@@ -310,9 +311,14 @@
     }
 
     $(stylesCatalogList).appendTo('head');
-    const $catalogListingHeader = $('.catalog-listing-header');
-    const $sortField = $catalogListingHeader.find('.sort-field');
-    const $showMoreBtn = $(`.catalog-listing__show-more`);
+    let $sortField = $('.catalog-listing-header .sort-field');
+    if ($catalogListingItemsWrapper.length === 0) {
+      $sortField = $('.cnc-catalog-listing__sort-wrapper .sort-field');
+    }
+    let  $showMoreBtn = $(`.catalog-listing__show-more`);
+    if ($showMoreBtn.length === 0) {
+      $showMoreBtn = $('.cnc-catalog-listing__show-more');
+    }
 
     $sortField.after(`
       <div class='js-init-check-list'></div>
@@ -426,17 +432,20 @@
 
   const fireEventsAndEntry = () => {
     console.log('fireEventsAndEntry');
-    if (location.href.includes('catalog/details/') || location.href.includes('promo-page/details/')) {
+    if (location.href.includes('/catalog/details/') || location.href.includes('/promo-page/details/')) {
       console.log('initCatalogDetail');
       setTimeout(initCatalogDetail, 2000);
     }
 
-    if (location.href.includes('catalog/') && !location.href.includes('catalog/details/')) {
+    if ((location.href.includes('/catalog/')
+        || location.href.includes('/brands/')
+        || location.href.includes('/promo-page/'))
+          && !location.href.includes('/catalog/details/')) {
       console.log('initCatalogList');
       setTimeout(initCatalogList, 2000);
     }
 
-    if (location.href.includes('catalog/details/') && location.href.includes('details_block=prices')) {
+    if (location.href.includes('/catalog/details/') && location.href.includes('details_block=prices')) {
       console.log('initCompareSortInDetail');
       setTimeout(initCompareSortInDetail, 500);
     }
