@@ -1,18 +1,19 @@
 // ==UserScript==
 // @name         Мегамаркет парсер цены
 // @namespace    http://tampermonkey.net/
-// @version      0.3
-// @description  try to take over the world!
-// @author       You
-// @match        https://megamarket.ru/catalog*
+// @version      0.4
+// @description  Megamarket parser extra fields
+// @author       ai-leonid
+// @match        https://megamarket.ru/catalog/*
+// @match        https://megamarket.ru/catalog/details/*
+// @match        https://megamarket.ru/promo-page/details/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=megamarket.ru
 // @grant        none
-// @require  https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js
 // ==/UserScript==
 
 (function() {
-
-  const styles = `<style>
+  const stylesCatalogList = `<style>
                 .money-benefit { 
                     display: flex;
                     padding-top: 3px;
@@ -74,8 +75,44 @@
                     word-spacing: 0;
                  }
                 </style>`
-
-  const formatter = new Intl.NumberFormat('ru-RU');
+  const stylesDetail = `<style>
+                 .price-and-bonus {
+                    display: flex;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    border: 1px solid #8654cc;
+                    border-radius: 12px;
+                    margin-bottom: 15px;
+                    align-items: center;
+                    flex-direction: column;
+                    background: var(--pui-bg-layer-02-medium);
+                 }
+                 
+                 .price-and-bonus .price-item {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    width: 100%;
+                    padding-top: 2px;
+                    padding-bottom: 2px;
+                 }
+                 
+                 .price-and-bonus .price-item:first-child {
+                    border-bottom: 1px solid #BCC7CF;
+                 }
+                 
+                .price-and-bonus .price-item .title { 
+                    font-size: 14px;
+                 }
+                 
+                .price-and-bonus .price-item .val { 
+                    font-weight: bold;
+                    font-size: 18px;
+                 }
+                </style>`
+  const formatterPrice = new Intl.NumberFormat('ru-RU');
 
   function parseDigitFromElem($elem) {
     return Number.parseFloat($elem.text().replace(/\D/g, '')) || 0;
@@ -102,29 +139,24 @@
       $itemMoney.after( `<div class="money-benefit">
                 <div class="benefit-item price-for-one">
                     <div class="title">Цена-Бонусы=&nbsp;</div>
-                    <div class="val">${formatter.format($itemPriceVal - $itemBonusVal)} ₽</div>
+                    <div class="val">${formatterPrice.format($itemPriceVal - $itemBonusVal)} ₽</div>
                 </div>
             </div>` );
 
     });
   }
 
-  function initLoad($cards) {
-    addExtraFieldsToCards($cards);
-  }
+  function initCatalogList() {
+    $(stylesCatalogList).appendTo('head')
+    const $catalogListingHeader = $('.catalog-listing-header');
+    const $sortField = $catalogListingHeader.find('.sort-field');
+    const $showMoreBtn = $(`.catalog-listing__show-more`);
+    let $catalogListingItemsWrapper = $('.catalog-listing__items');
+    let $catalogListingItems = $catalogListingItemsWrapper.find('.catalog-item');
 
-  $(function() {
-    setTimeout(function(){
-      $(styles).appendTo('head')
-      const $catalogListingHeader = $('.catalog-listing-header');
-      const $sortField = $catalogListingHeader.find('.sort-field');
-      const $showMoreBtn = $(`.catalog-listing__show-more`);
-      let $catalogListingItemsWrapper = $('.catalog-listing__items');
-      let $catalogListingItems = $catalogListingItemsWrapper.find('.catalog-item');
+    addExtraFieldsToCards($catalogListingItems);
 
-      initLoad($catalogListingItems);
-
-      $sortField.after(`<div class="custom-select-wrapper">
+    $sortField.after(`<div class="custom-select-wrapper">
                     <div class="sort-notion">*Сортировка применяется к результатам, которые уже есть на странице</div>
                         <select class="field sm custom-select-sort">
                             <option value="none">Нет сортировки</option>
@@ -132,68 +164,103 @@
                             <option value="by-bonus-size">По размеру бонуса</option>
                             <option value="by-final-price">По значению цена-бонус</option>
                         </select>
-                </div>
-            `)
+                </div>`)
 
-      const reInitClick = function () {
-        setTimeout(function(){
-          $catalogListingItemsWrapper = $('.catalog-listing__items')
-          $catalogListingItems = $catalogListingItemsWrapper.find('.catalog-item')
-          addExtraFieldsToCards($catalogListingItems);
+    const reInitClick = function () {
+      setTimeout(function(){
+        $catalogListingItemsWrapper = $('.catalog-listing__items')
+        $catalogListingItems = $catalogListingItemsWrapper.find('.catalog-item')
+        addExtraFieldsToCards($catalogListingItems);
 
-          $(`.catalog-listing__show-more`).on('click', reInitClick);
-        }, 5000)
+        $(`.catalog-listing__show-more`).on('click', reInitClick);
+      }, 5000)
+    }
+
+    $showMoreBtn.on('click', reInitClick);
+
+    $('.custom-select-sort').on('change', function() {
+      $catalogListingItemsWrapper = $('.catalog-listing__items');
+      $catalogListingItems = $catalogListingItemsWrapper.find('.catalog-item');
+
+      if ($(this).val() === 'none') {
+        // console.log(catalogListingItemsDefaultArr);
+        // console.log($catalogListingItems);
+        $(catalogListingItemsDefaultArr).appendTo($catalogListingItemsWrapper)
       }
 
-      $showMoreBtn.on('click', reInitClick);
+      if ($(this).val() === 'by-bonus-percent') {
+        $catalogListingItems.sort(function(a, b) {
+          const bonusPercentB = parseDigitFromElem($(b)
+          .find(`.item-bonus .bonus-percent`))
+          const bonusPercentA = parseDigitFromElem($(a)
+          .find(`.item-bonus .bonus-percent`))
 
-      $('.custom-select-sort').on('change', function() {
-        $catalogListingItemsWrapper = $('.catalog-listing__items');
-        $catalogListingItems = $catalogListingItemsWrapper.find('.catalog-item');
+          return bonusPercentB - bonusPercentA;
+        }).appendTo($catalogListingItemsWrapper);
+      }
 
-        if ($(this).val() === 'none') {
-          console.log(catalogListingItemsDefaultArr);
-          console.log($catalogListingItems);
-          $(catalogListingItemsDefaultArr).appendTo($catalogListingItemsWrapper)
-        }
+      if ($(this).val() === 'by-bonus-size') {
+        $catalogListingItems.sort(function(a, b) {
+          const bonusAmountB = parseDigitFromElem($(b)
+          .find(`.item-bonus .bonus-amount`))
+          const bonusAmountA = parseDigitFromElem($(a)
+          .find(`.item-bonus .bonus-amount`))
 
-        if ($(this).val() === 'by-bonus-percent') {
-          $catalogListingItems.sort(function(a, b) {
-            const bonusPercentB = parseDigitFromElem($(b)
-            .find(`.item-bonus .bonus-percent`))
-            const bonusPercentA = parseDigitFromElem($(a)
-            .find(`.item-bonus .bonus-percent`))
+          return bonusAmountB - bonusAmountA;
+        }).appendTo($catalogListingItemsWrapper);
+      }
 
-            return bonusPercentB - bonusPercentA;
-          }).appendTo($catalogListingItemsWrapper);
-        }
+      if ($(this).val() === 'by-final-price') {
+        $catalogListingItems.sort(function(a, b) {
+          const bonusAmountA = parseDigitFromElem($(a)
+          .find(`.item-bonus .bonus-amount`));
+          const priceA = parseDigitFromElem($(a).find('.item-price'));
 
-        if ($(this).val() === 'by-bonus-size') {
-          $catalogListingItems.sort(function(a, b) {
-            const bonusAmountB = parseDigitFromElem($(b)
-            .find(`.item-bonus .bonus-amount`))
-            const bonusAmountA = parseDigitFromElem($(a)
-            .find(`.item-bonus .bonus-amount`))
+          const bonusAmountB = parseDigitFromElem($(b)
+          .find(`.item-bonus .bonus-amount`));
+          const priceB = parseDigitFromElem($(b).find('.item-price'));
 
-            return bonusAmountB - bonusAmountA;
-          }).appendTo($catalogListingItemsWrapper);
-        }
+          return (priceA - bonusAmountA) - (priceB - bonusAmountB);
+        }).appendTo($catalogListingItemsWrapper);
+      }
+    })
+  }
 
-        if ($(this).val() === 'by-final-price') {
-          $catalogListingItems.sort(function(a, b) {
-            const bonusAmountA = parseDigitFromElem($(a)
-            .find(`.item-bonus .bonus-amount`));
-            const priceA = parseDigitFromElem($(a).find('.item-price'));
+  function initCatalogDetail() {
+    $(stylesDetail).appendTo('head')
+    const $priceCard = $('.offers-info');
+    const $priceBlockForInsert = $priceCard.find('.pdp-sales-block__price');
+    const $bonusTable = $priceCard.find('.pdp-cashback-table');
+    const $productPriceVal = parseDigitFromElem($priceCard.find('.pdp-sales-block__price-final'));
 
-            const bonusAmountB = parseDigitFromElem($(b)
-            .find(`.item-bonus .bonus-amount`));
-            const priceB = parseDigitFromElem($(b).find('.item-price'));
+    const $bonusAmountSberPayVal = parseDigitFromElem(
+      $($bonusTable.find('.pdp-cashback-table__row')[0]).find('.bonus-amount')
+    );
+    const bonusAmountOtherVal = parseDigitFromElem(
+      $($bonusTable.find('.pdp-cashback-table__row')[1]).find('.bonus-amount')
+    );
 
-            return (priceA - bonusAmountA) - (priceB - bonusAmountB);
-          }).appendTo($catalogListingItemsWrapper);
-        }
-      })
+    parseDigitFromElem($priceCard.find('.pdp-sales-block__price-final'))
+
+    $priceBlockForInsert.after($(`<div class="price-and-bonus">
+                <div class="price-item">
+                    <div class="title">цена-сберпей бонусы</div>
+                    <div class="val">${formatterPrice.format($productPriceVal - $bonusAmountSberPayVal)} ₽</div>
+                </div>
+                <div class="price-item">
+                    <div class="title">цена-другие бонусы</div>
+                    <div class="val">${formatterPrice.format($productPriceVal - bonusAmountOtherVal)} ₽</div>
+                </div>
+            </div>` ));
+  }
+
+  $(function() {
+    setTimeout(function(){
+      if (location.href.includes('catalog/details') || location.href.includes('promo-page/details')) {
+        initCatalogDetail();
+      } else if (location.href.includes('catalog/')) {
+        initCatalogList();
+      }
     }, 5000)
-
   });
 })();
