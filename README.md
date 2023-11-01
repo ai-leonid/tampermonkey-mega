@@ -7,4 +7,4 @@
 ## Установка
 1. Установить расширение для браузера `tampermonkey`
 
-2. Добавить расширение в список из `GitHub`: [https://github.com/ai-leonid/tampermonkey-mega/raw/main/dist/megaparser.js](https://github.com/ai-leonid/tampermonkey-mega/raw/main/dist/megaparser.js)
+2. Добавить расширение в список из `GitHub`: [https://github.com/ai-leonid/tampermonkey-mega/raw/main/megaparser.user.js](https://github.com/ai-leonid/tampermonkey-mega/raw/main/megaparser.user.js)
