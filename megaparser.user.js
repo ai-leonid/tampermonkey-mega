@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Мегамаркет парсер цены
+// @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      0.4
-// @description  Megamarket parser extra fields
+// @version      0.5
+// @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        https://megamarket.ru/catalog/*
 // @match        https://megamarket.ru/catalog/details/*
