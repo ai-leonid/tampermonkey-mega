@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.1.1
+// @version      1.1.2
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -10,6 +10,112 @@
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js
 // ==/UserScript==
+
+(function() {
+  // const nativeFetch = window.fetch;
+  // window.fetch = function(...args) {
+  //   let [resource, config] = args;
+  //
+  //   if (resource.includes('/v1/catalogService/catalog/search')) {
+  //     let body = JSON.parse(config.body);
+  //     body.limit = 5;
+  //     config.body = JSON.stringify(body);
+  //   }
+  //   return nativeFetch.apply(window, args);
+  // };
+
+  const getRandomMs = (min = 800, max = 2000) => {
+    return Math.random() * (max - min) + min;
+  };
+
+  const delay = (ms = getRandomMs()) => new Promise(r => setTimeout(r, ms));
+
+
+  const { fetch: originalFetch } = window;
+  window.fetch = async (...args) => {
+    let [resource, config] = args;
+
+    /* Intercept request */
+    if (resource.includes('/v1/catalogService/catalog/search')) {
+      let body = JSON.parse(config.body);
+      // body.limit = 44;
+      // body.offset = 44;
+      config.body = JSON.stringify(body);
+    }
+
+    /* Intercept response */
+    let initResp = await originalFetch(resource, config);
+
+    if (resource.includes('/v1/catalogService/catalog/search')) {
+      const initRespJson = await initResp.clone().json();
+      const {
+        items: initItems,
+        total,
+        limit,
+        listingSize,
+        offset,
+      } = initRespJson;
+      const numbTotal = parseInt(total);
+      const numbLimit = parseInt(limit);
+      const numbOffset = parseInt(offset);
+
+      const respJsonArr = [initRespJson];
+
+      // const getDataSeries = async items => {
+      //   let results = [];
+      //   for (let index = 0; index < items.length; index++) {
+      //     await delay();
+      //     const res = await fetch(items[index]);
+      //     results.push({ name: res.name, data: res.data });
+      //   }
+      //   return results;
+      // };
+
+      console.log('----------config.body');
+      let newBody = JSON.parse(config.body);
+      console.log(newBody);
+      // newBody.offset = offset * 2;
+      config.body = JSON.stringify(newBody);
+
+      console.log('----------cycleCount HERE D1A3DE86B6737F4B');
+      const cycleCount = Math.ceil(numbTotal / numbLimit);
+      console.log(cycleCount);
+      console.log(numbTotal);
+      const actualOffset = numbOffset || numbLimit;
+
+      for (let index = 1; index < cycleCount-15; index++) {
+        // console.log(index);
+        // console.log(actualOffset * index);
+        // await delay();
+        // newBody.offset = actualOffset * index;
+        // config.body = JSON.stringify(newBody);
+        // const cycleResp = await originalFetch(resource, config);
+        // let cycleRespJson = await cycleResp.clone().json();
+        // const { items: secondItems } = secondRespJson;
+
+        // respJsonArr.push(cycleRespJson);
+      }
+
+      const allItems = respJsonArr.reduce(
+        (accumulator, currentValue) => accumulator.concat(currentValue.items),
+        [],
+      );
+
+      console.log('----allItems');
+      console.log(allItems);
+
+      const finalRespJson = respJsonArr[respJsonArr.length - 1];
+
+      finalRespJson.items = [...allItems];
+
+      console.log('----finalRespJson');
+      console.log(finalRespJson);
+      return new Response(JSON.stringify(finalRespJson));
+    }
+
+    return initResp;
+  };
+})();
 
 (function() {
   const stylesCatalogList = `
@@ -140,7 +246,7 @@
       opacity: 0.6;
     }
     
-    .offers-info .pdp-sales-block__price-final {
+    .offers-info .sales-block-offer-price__price-final {
       opacity: 0.6;
     }
   </style>`;
@@ -315,10 +421,14 @@
     if ($catalogListingItemsWrapper.length === 0) {
       $sortField = $('.cnc-catalog-listing__sort-wrapper .sort-field');
     }
-    let  $showMoreBtn = $(`.catalog-listing__show-more`);
+    let $showMoreBtn = $(`.catalog-listing__show-more`);
     if ($showMoreBtn.length === 0) {
       $showMoreBtn = $('.cnc-catalog-listing__show-more');
     }
+
+    // setTimeout(()=>{
+    //   $showMoreBtn
+    // }, 1000)
 
     $sortField.after(`
       <div class='js-init-check-list'></div>
@@ -399,9 +509,11 @@
 
     $(stylesDetail).appendTo('head');
     const $priceCard = $('.offers-info');
-    const $priceBlockForInsert = $priceCard.find('.pdp-sales-block__price');
+    const $priceBlockForInsert = $priceCard.find('.sales-block-offer-price');
     const $bonusTable = $priceCard.find('.pdp-cashback-table');
-    const $productPriceVal = parseDigitFromElem($priceCard.find('.pdp-sales-block__price-final'));
+    //есть ещё такая страница https://megamarket.ru/promo-page/details/#?slug=naushniki-a4tech-bloody-mr710-s-mikrofonom-chernye-bt-100047538775&merchantId=11440
+    //там другой класс вместо pdp-sales-block__price-final -> sales-block-offer-price__price-final
+    const $productPriceVal = parseDigitFromElem($priceCard.find('.sales-block-offer-price__price-final'));
 
     /* Init main card price */
     const $bonusAmountSberPayVal = parseDigitFromElem(
@@ -433,10 +545,11 @@
       setTimeout(initCatalogDetail, 2000);
     }
 
+    // есть ещё https://megamarket.ru/shop/citilink/catalog/naushniki-i-aksessuary
     if ((location.href.includes('/catalog/')
         || location.href.includes('/brands/')
         || location.href.includes('/promo-page/'))
-          && !location.href.includes('/catalog/details/')) {
+      && !location.href.includes('/catalog/details/')) {
       console.log('initCatalogList');
       setTimeout(initCatalogList, 2000);
     }
