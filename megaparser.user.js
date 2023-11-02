@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      1.1.1
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -426,10 +426,6 @@
     );
   }
 
-  // $(window).bind('popstate', function() {
-  //   console.log('$ popstate changed!');
-  // });
-
   const fireEventsAndEntry = () => {
     console.log('fireEventsAndEntry');
     if (location.href.includes('/catalog/details/') || location.href.includes('/promo-page/details/')) {
@@ -454,8 +450,12 @@
   let pushState = history.pushState;
   history.pushState = function() {
     pushState.apply(history, arguments);
-    fireEventsAndEntry('pushState', arguments);  // Some event-handling function
+    fireEventsAndEntry('pushState', arguments);
   };
+
+  $(window).bind('popstate', function() {
+    fireEventsAndEntry();
+  });
 
   $(function() {
     // setTimeout(fireEventsAndEntry, 5000);
