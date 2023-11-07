@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.6.1
+// @version      1.6.2
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -961,7 +961,7 @@
     fireEventsAndEntry();
   });
 
-  // $(function() {
-  //   fireEventsAndEntry();
-  // });
+  $(function() {
+    fireEventsAndEntry();
+  });
 })();
