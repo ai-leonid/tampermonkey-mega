@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.3.0
+// @version      1.4.0
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -248,15 +248,22 @@
         '.cnc-catalog-listing__show-more'],
       // sortField: ['.catalog-listing-header .sort-field', '.cnc-catalog-listing__sort-wrapper .sort-field'],
     },
+    detailPage: {
+      priceCard: ['.offers-info'],
+      priceInCardBlock: ['.sales-block-offer-price'],
+      priceInCardVal: ['.sales-block-offer-price__price-final'],
+      bonusAmount:
+          ['.pdp-cashback-table .pdp-cashback-table__row .bonus-amount'],
+      // bonusTable: ['.pdp-cashback-table'],
+    },
     rowInListDetail: [],
-    detailPagePrice: [],
     custom: {
       initList: '',
     },
   };
 
-  const urlSel = {
-    catalogList: ['/v1/catalogService/catalog/search'],
+  const apiSel = {
+    catalogList: ['/catalog/search'],
   };
 
   jQuery.fn.extend({
@@ -286,6 +293,8 @@
   }
 
   function parseDigitFromElem($elem) {
+    $elem = $($elem);
+
     return Number.parseFloat($elem.text().replace(/\D/g, '')) || 0;
   }
 
@@ -306,6 +315,23 @@
     });
   };
 
+  function isLocationDetailsPage() {
+    return location.href.includes('/catalog/details/') ||
+        location.href.includes('/promo-page/details/');
+  }
+
+  function isLocationDetailsPricePage() {
+    return isLocationDetailsPage() &&
+        location.href.includes('details_block=prices');
+  }
+
+  function isLocationCatalogPage() {
+    return (location.href.includes('/catalog/')
+            || location.href.includes('/brands/')
+            || location.href.includes('/promo-page/'))
+        && !location.href.includes('/catalog/details/');
+  }
+
   // let initSearchReqConf;
   // let initSearchReqResource;
   const {fetch: originalFetch} = window;
@@ -322,9 +348,10 @@
 
     /* Intercept response */
     let initResp = await originalFetch(resource, config);
-    if (resource.includes('/v1/catalogService/catalog/search')) {
-      const initRespJson = await initResp.clone().json();
+    const initRespJson = await initResp.clone().json();
 
+    // if (apiSel.catalogList.findIndex(element => element.includes("substring"))) {
+    if (resource.includes('/v1/catalogService/catalog/search')) {
       // initSearchReqConf = !initSearchReqConf ? config : initSearchReqConf;
       // initSearchReqResource = !initSearchReqResource ? resource : initSearchReqResource;
 
@@ -362,19 +389,28 @@
 
       window.lastRequestData = args;
       window.lastResponseData = initRespJson;
+
       return new Response(JSON.stringify(initRespJson));
     }
 
     return initResp;
   };
 
-  let intervalId;
-
   function isLoadingList() {
     // if it has spinner inside show more btn
     return $el(cnSel.catalogList.showMoreBtn).find('.spinner-inline').length >
         0;
   }
+
+  function revalidateItemsCounter() {
+    $('.custom-total-counter').
+    html(
+        `<strong>${getCurrentItemsCount()}</strong> 
+          из <strong>${getTotalItemsCount()}</strong>`,
+    );
+  }
+
+  let intervalId;
 
   function runCheckIsLoadingList() {
     $('.upper-load-btn').addClass('is-loading').prop('disabled', true);
@@ -601,9 +637,7 @@
         $(this).val(5);
       }
     });
-    $('.custom-total-counter').
-    html(
-        `<strong>${getCurrentItemsCount()}</strong> из <strong>${getTotalItemsCount()}</strong>`);
+    revalidateItemsCounter();
 
     const reInitCardsAfterLoad = function() {
       console.log('reInitCardsAfterLoad');
@@ -625,9 +659,7 @@
         });
 
         $el(cnSel.catalogList.showMoreBtn).on('click', reInitCardsAfterLoad);
-        $('.custom-total-counter').
-        html(
-            `<strong>${getCurrentItemsCount()}</strong> из <strong>${getTotalItemsCount()}</strong>`);
+        revalidateItemsCounter();
 
         await delay();
       }
@@ -636,8 +668,8 @@
     $('.custom-actions-wrapper').append($upperBtn);
 
     $('.custom-select-sort').on('change', function() {
-      $catalogListingItemsWrapper = $('.catalog-listing__items');
-      $catalogListingItems = $catalogListingItemsWrapper.find('.catalog-item');
+      let $catalogListingItemsWrapper = $el(cnSel.catalogList.wrapper);
+      let $catalogListingItems = $catalogListingItemsWrapper.findInArr(cnSel.catalogList.item);
 
       if ($(this).val() === 'none') {
         // console.log(catalogListingItemsDefaultArr);
@@ -689,23 +721,17 @@
     }
 
     $(stylesDetail).appendTo('head');
-    const $priceCard = $('.offers-info');
-    const $priceBlockForInsert = $priceCard.find('.sales-block-offer-price');
-    const $bonusTable = $priceCard.find('.pdp-cashback-table');
-    //есть ещё такая страница https://megamarket.ru/promo-page/details/#?slug=naushniki-a4tech-bloody-mr710-s-mikrofonom-chernye-bt-100047538775&merchantId=11440
-    //там другой класс вместо pdp-sales-block__price-final -> sales-block-offer-price__price-final
-    const $productPriceVal = parseDigitFromElem($priceCard.find(
-        '.sales-block-offer-price__price-final'));
+    const $priceCard = $el(cnSel.detailPage.priceCard);
+    const $priceBlockForInsert = $priceCard.findInArr(
+        cnSel.detailPage.priceInCardBlock);
+    const $productPriceVal = parseDigitFromElem(
+        $priceCard.findInArr(cnSel.detailPage.priceInCardVal));
 
     /* Init main card price */
     const $bonusAmountSberPayVal = parseDigitFromElem(
-        $($bonusTable.find('.pdp-cashback-table__row')[0]).
-        find('.bonus-amount'),
-    );
+        $el(cnSel.detailPage.bonusAmount)[0]);
     const bonusAmountOtherVal = parseDigitFromElem(
-        $($bonusTable.find('.pdp-cashback-table__row')[1]).
-        find('.bonus-amount'),
-    );
+        $el(cnSel.detailPage.bonusAmount)[1]);
 
     $priceBlockForInsert.after(`
       <div class='price-and-bonus'>
@@ -726,23 +752,18 @@
 
   const fireEventsAndEntry = () => {
     console.log('fireEventsAndEntry');
-    if (location.href.includes('/catalog/details/') ||
-        location.href.includes('/promo-page/details/')) {
+    if (isLocationDetailsPage()) {
       console.log('initCatalogDetail');
       setTimeout(initCatalogDetail, 2000);
     }
 
     // есть ещё https://megamarket.ru/shop/citilink/catalog/naushniki-i-aksessuary
-    if ((location.href.includes('/catalog/')
-            || location.href.includes('/brands/')
-            || location.href.includes('/promo-page/'))
-        && !location.href.includes('/catalog/details/')) {
+    if (isLocationCatalogPage()) {
       console.log('initCatalogList');
       setTimeout(initCatalogList, 2000);
     }
 
-    if (location.href.includes('/catalog/details/') &&
-        location.href.includes('details_block=prices')) {
+    if (isLocationDetailsPricePage()) {
       console.log('initCompareSortInDetail');
       setTimeout(initCompareSortInDetail, 500);
     }
