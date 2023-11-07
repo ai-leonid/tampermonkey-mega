@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.4.0
+// @version      1.5.0
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -12,6 +12,7 @@
 // ==/UserScript==
 
 (function() {
+  /* ---------- CONSTANTS AND ELEMS ---------- */
   const stylesCatalogList = `
   <style>
     /* CUSTOM RULES REPAIR */
@@ -231,7 +232,6 @@
     
 
   </style>`;
-  const formatterPrice = new Intl.NumberFormat('ru-RU');
 
   const spinnerEl = `
   <div class='spinner-inline'><svg id='spinner-8_12_1_0_0-6' viewBox='0 0 100 100' class='spinner'><circle r='12' cx='88' cy='50' class='circle' style='animation-delay: -0.6s; animation-duration: 0.6s;'></circle><circle r='12' cx='76.87005768508881' cy='76.8700576850888' class='circle' style='animation-delay: -0.525s; animation-duration: 0.6s;'></circle><circle r='12' cx='50' cy='88' class='circle' style='animation-delay: -0.45s; animation-duration: 0.6s;'></circle><circle r='12' cx='23.129942314911197' cy='76.87005768508881' class='circle' style='animation-delay: -0.375s; animation-duration: 0.6s;'></circle><circle r='12' cx='12' cy='50.00000000000001' class='circle' style='animation-delay: -0.3s; animation-duration: 0.6s;'></circle><circle r='12' cx='23.129942314911187' cy='23.129942314911197' class='circle' style='animation-delay: -0.225s; animation-duration: 0.6s;'></circle><circle r='12' cx='49.99999999999999' cy='12' class='circle' style='animation-delay: -0.15s; animation-duration: 0.6s;'></circle><circle r='12' cx='76.8700576850888' cy='23.129942314911187' class='circle' style='animation-delay: -0.075s; animation-duration: 0.6s;'></circle></svg>
@@ -256,7 +256,16 @@
           ['.pdp-cashback-table .pdp-cashback-table__row .bonus-amount'],
       // bonusTable: ['.pdp-cashback-table'],
     },
-    rowInListDetail: [],
+    detailPagePrices: {
+      tabSelector: ['.pdp-tab-selector'],
+      select: ['.pdp-prices .select'],
+      productOffersWrapper: ['.pdp-prices .product-offers'],
+      productOffersItems: ['.pdp-prices .product-offer'],
+      priceBonusPerRow: ['.product-offer-price .bonus-amount'],
+      pricePercentPerRow: ['.product-offer-price .bonus-percent'],
+      priceOfferPerRow: ['.product-offer-price .product-offer-price__amount'],
+      // productOffersItemsForFind: ['.product-offer'],
+    },
     custom: {
       initList: '',
     },
@@ -265,6 +274,9 @@
   const apiSel = {
     catalogList: ['/catalog/search'],
   };
+
+  /* ---------- COMMONS FUNCTIONS ---------- */
+  const formatterPrice = new Intl.NumberFormat('ru-RU');
 
   jQuery.fn.extend({
     findInArr: function(clsSelectorArr) {
@@ -298,7 +310,6 @@
     return Number.parseFloat($elem.text().replace(/\D/g, '')) || 0;
   }
 
-  /* INTERCEPTOR LOADER*/
   const getRandomMs = (min = 800, max = 2000) => {
     return Math.random() * (max - min) + min;
   };
@@ -320,11 +331,6 @@
         location.href.includes('/promo-page/details/');
   }
 
-  function isLocationDetailsPricePage() {
-    return isLocationDetailsPage() &&
-        location.href.includes('details_block=prices');
-  }
-
   function isLocationCatalogPage() {
     return (location.href.includes('/catalog/')
             || location.href.includes('/brands/')
@@ -332,10 +338,12 @@
         && !location.href.includes('/catalog/details/');
   }
 
+  /* ---------- PAGE CATALOG LIST ---------- */
   // let initSearchReqConf;
   // let initSearchReqResource;
   const {fetch: originalFetch} = window;
   window.fetch = async (...args) => {
+    // interceptor loader
     let [resource, config] = args;
 
     /* Intercept request */
@@ -429,7 +437,6 @@
   }
 
   function getTotalItemsCount() {
-
     if (window.lastResponseData) {
       return window.lastResponseData.total;
     }
@@ -444,7 +451,7 @@
 
   let catalogListingItemsDefaultArr = [];
 
-  function addExtraFieldsToCardsInList($cards) {
+  function addFieldsToCardsInList($cards) {
     if (!$cards) {
       let $catalogListingItemsWrapper = $el(cnSel.catalogList.wrapper);
       $cards = $catalogListingItemsWrapper.findInArr(cnSel.catalogList.item);
@@ -474,7 +481,111 @@
     });
   }
 
-  function addExtraFieldsToRowsInDetail($rows) {
+  /* ---------- PAGE DETAILS ---------- */
+  /* Custom sorting in compare lists rows */
+  const titleMostProfitDiff = '[Самые выгодные (цена-бонус)]';
+  const titleMostBonusPercent = '[Самый большой процент бонуса]';
+  const titlePricePrior = '[Приоритет дешевая цена с самым большим бонусом]';
+
+  function addSelectorInDetails() {
+    const $pricesSelect = $el(cnSel.detailPagePrices.select);
+    $pricesSelect.after('<div class="js-init-check-sort-detail"></div>');
+    $pricesSelect.find('input').removeAttr('readonly');
+
+    $pricesSelect.on('click', function() {
+      // recalculate extra rows
+      addFieldsToRowsInDetail();
+      $curSelect = $(this);
+
+      $curSelect.find('.options ul li:first').before(`
+        <li class='custom-sort-option-most-profit option'>${titleMostProfitDiff}</li>
+        <li class='custom-sort-option-most-bonus option'>${titleMostBonusPercent}</li>
+        <!--<li class='custom-sort-option-price-prior option'>${titlePricePrior}</li>-->
+      `);
+
+      $curSelect.find('.custom-sort-option-most-profit').
+      on('click', function() {
+        // hack for set input value
+        setTimeout(() => {
+          $curSelect.find('input').val(titleMostProfitDiff);
+        }, 1000);
+
+        let $productOffersWrapper = $el(
+            cnSel.detailPagePrices.productOffersWrapper);
+        let $productOffersItems = $el(
+            cnSel.detailPagePrices.productOffersItems);
+
+        const sortedByMostProfit = _.orderBy($productOffersItems, function(o) {
+          const price = parseDigitFromElem(
+              $(o).findInArr(cnSel.detailPagePrices.priceOfferPerRow));
+          const bonus = parseDigitFromElem(
+              $(o).findInArr(cnSel.detailPagePrices.priceBonusPerRow));
+          return price - bonus;
+        }, ['asc']);
+        $(sortedByMostProfit).appendTo($productOffersWrapper);
+      });
+
+      $curSelect.find('.custom-sort-option-most-bonus').on('click', function() {
+        // hack for set input value
+        setTimeout(() => {
+          $curSelect.find('input').val(titleMostBonusPercent);
+        }, 1000);
+
+        let $productOffersWrapper = $el(
+            cnSel.detailPagePrices.productOffersWrapper);
+        let $productOffersItems = $el(
+            cnSel.detailPagePrices.productOffersItems);
+
+        const sortedByMostBonus = _.orderBy($productOffersItems, function(o) {
+          const bonusPercent = parseDigitFromElem(
+              $(o).findInArr(cnSel.detailPagePrices.pricePercentPerRow));
+
+          return bonusPercent;
+        }, ['desc']);
+        $(sortedByMostBonus).appendTo($productOffersWrapper);
+      });
+
+      /* not working I don't know what I need */
+      $curSelect.find('.custom-sort-option-price-prior').
+      on('click', function() {
+        // hack for set input value
+        setTimeout(() => {
+          $curSelect.find('input').val(titlePricePrior);
+        }, 400);
+
+        let $productOffersWrapper = $el(
+            cnSel.detailPagePrices.productOffersWrapper);
+        let $productOffersItems = $el(
+            cnSel.detailPagePrices.productOffersItems);
+
+        let sortedByPricePrior = [];
+
+        sortedByPricePrior = _.orderBy($productOffersItems, function(o) {
+          const bonusPercent = parseDigitFromElem(
+              $(o).findInArr(cnSel.detailPagePrices.pricePercentPerRow));
+
+          return bonusPercent;
+        }, 'desc');
+
+        sortedByPricePrior = _.orderBy(sortedByPricePrior, function(o) {
+          const price = parseDigitFromElem(
+              $(o).findInArr(cnSel.detailPagePrices.priceOfferPerRow));
+          const bonus = parseDigitFromElem(
+              $(o).findInArr(cnSel.detailPagePrices.priceBonusPerRow));
+
+          return price - bonus;
+        }, 'asc');
+
+        $(sortedByPricePrior).appendTo($productOffersWrapper);
+      });
+    });
+  }
+
+  function addFieldsToRowsInDetail($rows) {
+    if (!$rows) {
+      $rows = $el(cnSel.detailPagePrices.productOffersItems);
+    }
+
     $rows.each(function() {
       $row = $(this);
       if ($row.attr('data-parsed') && $row.attr('data-parsed') === '1') {
@@ -499,107 +610,42 @@
     });
   }
 
-  /* Custom sorting in compare lists rows */
-  function initCompareSortInDetail() {
+  async function addPricesSortAndFieldsInDetails() {
     if ($('.js-init-check-sort-detail').length > 0) {
       return false;
     }
+    //delay for interface waiting
+    await delay(2000);
 
-    const $pricesSelect = $('.pdp-prices .select');
-    $pricesSelect.after('<div class="js-init-check-sort-detail"></div>');
-    $pricesSelect.find('input').removeAttr('readonly');
+    const $tabSelector = $el(cnSel.detailPagePrices.tabSelector);
+    const isOpenedPrices = $tabSelector.find('a.active').
+    text().
+    toLowerCase().
+    includes('цены');
 
-    const titleMostProfitDiff = '[Самые выгодные (цена-бонус)]';
-    const titleMostBonusPercent = '[Самый большой процент бонуса]';
-    const titlePricePrior = '[Приоритет дешевая цена с самым большим бонусом]';
-    $pricesSelect.on('click', function() {
-      // recalculate extra rows
-      addExtraFieldsToRowsInDetail($('.pdp-prices .product-offer'));
-      $curSelect = $(this);
+    // if prices already activated init
+    if (isOpenedPrices) {
+      await delay(500);
+      /* Add sorting logic on price tab */
+      addSelectorInDetails();
+      /* Add extra info to compare lists rows */
+      addFieldsToRowsInDetail();
+    }
 
-      $curSelect.find('.options ul li:first').before(`
-        <li class='custom-sort-option-most-profit option'>${titleMostProfitDiff}</li>
-        <li class='custom-sort-option-most-bonus option'>${titleMostBonusPercent}</li>
-        <!--<li class='custom-sort-option-price-prior option'>${titlePricePrior}</li>-->
-      `);
+    // if other tab selected init it later
+    $tabSelector.on('click', async function() {
+      if ($(this).find('a.active').text().toLowerCase().includes('цены')) {
+        await delay(500);
 
-      $curSelect.find('.custom-sort-option-most-profit').
-      on('click', function() {
-        // hack for set input value
-        setTimeout(() => {
-          $curSelect.find('input').val(titleMostProfitDiff);
-        }, 1000);
-
-        let $productOffersWrapper = $('.pdp-prices .product-offers');
-        let $productOffersItems = $productOffersWrapper.find('.product-offer');
-
-        const sortedByMostProfit = _.orderBy($productOffersItems, function(o) {
-          const price = parseDigitFromElem(
-              $(o).find(`.product-offer-price .product-offer-price__amount`));
-          const bonus = parseDigitFromElem(
-              $(o).find('.product-offer-price .money-bonus .bonus-amount'));
-          return price - bonus;
-        }, ['asc']);
-        $(sortedByMostProfit).appendTo($productOffersWrapper);
-      });
-
-      $curSelect.find('.custom-sort-option-most-bonus').on('click', function() {
-        // hack for set input value
-        setTimeout(() => {
-          $curSelect.find('input').val(titleMostBonusPercent);
-        }, 1000);
-
-        let $productOffersWrapper = $('.pdp-prices .product-offers');
-        let $productOffersItems = $productOffersWrapper.find('.product-offer');
-
-        const sortedByMostBonus = _.orderBy($productOffersItems, function(o) {
-          const bonusPercent = parseDigitFromElem(
-              $(o).find('.product-offer-price .money-bonus .bonus-percent'));
-
-          return bonusPercent;
-        }, ['desc']);
-        $(sortedByMostBonus).appendTo($productOffersWrapper);
-      });
-
-      /* not working I don't know what I need */
-      $curSelect.find('.custom-sort-option-price-prior').
-      on('click', function() {
-        // hack for set input value
-        setTimeout(() => {
-          $curSelect.find('input').val(titlePricePrior);
-        }, 400);
-
-        let $productOffersWrapper = $('.pdp-prices .product-offers');
-        let $productOffersItems = $productOffersWrapper.find('.product-offer');
-
-        let sortedByPricePrior = [];
-
-        sortedByPricePrior = _.orderBy($productOffersItems, function(o) {
-          const bonusPercent = parseDigitFromElem(
-              $(o).find('.product-offer-price .money-bonus .bonus-percent'));
-
-          return bonusPercent;
-        }, 'desc');
-
-        sortedByPricePrior = _.orderBy(sortedByPricePrior, function(o) {
-          const price = parseDigitFromElem(
-              $(o).find(`.product-offer-price .product-offer-price__amount`));
-          const bonus = parseDigitFromElem(
-              $(o).find('.product-offer-price .money-bonus .bonus-amount'));
-
-          return price - bonus;
-        }, 'asc');
-
-        $(sortedByPricePrior).appendTo($productOffersWrapper);
-      });
+        addSelectorInDetails();
+        addFieldsToRowsInDetail();
+      }
     });
-
-    /* Add extra info to compare lists rows */
-    addExtraFieldsToRowsInDetail($('.pdp-prices .product-offer'));
   }
 
+  /* ---------- INIT BLOCK ---------- */
   function initCatalogList() {
-    addExtraFieldsToCardsInList();
+    addFieldsToCardsInList();
 
     if ($('.js-init-check-list').length > 0) {
       return false;
@@ -622,7 +668,7 @@
         </label>
         <label class='custom-actions-item input-item-wrapper'>
           <span>Кол. стр для загрузки</span>
-          <input class='custom-input-page' type='number' value='1' min='1' max='5' />
+          <input class='custom-input-page' type='number' value='1' min='1' max='10' />
         </label>
         <div class='custom-total-counter'></div>
       </div>`);
@@ -633,15 +679,15 @@
         $(this).val(1);
       }
 
-      if (val > 5) {
-        $(this).val(5);
+      if (val > 10) {
+        $(this).val(10);
       }
     });
     revalidateItemsCounter();
 
     const reInitCardsAfterLoad = function() {
       console.log('reInitCardsAfterLoad');
-      addExtraFieldsToCardsInList();
+      addFieldsToCardsInList();
       runCheckIsLoadingList();
     };
     $el(cnSel.catalogList.showMoreBtn).on('click', reInitCardsAfterLoad);
@@ -669,7 +715,8 @@
 
     $('.custom-select-sort').on('change', function() {
       let $catalogListingItemsWrapper = $el(cnSel.catalogList.wrapper);
-      let $catalogListingItems = $catalogListingItemsWrapper.findInArr(cnSel.catalogList.item);
+      let $catalogListingItems = $catalogListingItemsWrapper.findInArr(
+          cnSel.catalogList.item);
 
       if ($(this).val() === 'none') {
         // console.log(catalogListingItemsDefaultArr);
@@ -748,24 +795,20 @@
           </div>
       </div>`,
     );
+
+    addPricesSortAndFieldsInDetails();
   }
 
   const fireEventsAndEntry = () => {
     console.log('fireEventsAndEntry');
     if (isLocationDetailsPage()) {
       console.log('initCatalogDetail');
-      setTimeout(initCatalogDetail, 2000);
+      setTimeout(initCatalogDetail, 2500);
     }
 
-    // есть ещё https://megamarket.ru/shop/citilink/catalog/naushniki-i-aksessuary
     if (isLocationCatalogPage()) {
       console.log('initCatalogList');
-      setTimeout(initCatalogList, 2000);
-    }
-
-    if (isLocationDetailsPricePage()) {
-      console.log('initCompareSortInDetail');
-      setTimeout(initCompareSortInDetail, 500);
+      setTimeout(initCatalogList, 2500);
     }
   };
 
@@ -780,7 +823,6 @@
   });
 
   $(function() {
-    // setTimeout(fireEventsAndEntry, 5000);
     fireEventsAndEntry();
   });
 })();
