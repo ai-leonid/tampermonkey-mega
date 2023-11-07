@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.5.0
+// @version      1.6.0
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -229,8 +229,66 @@
       font-weight: bold;
       font-size: 16px;
     }
+  </style>`;
+  const stylesAllItems = `
+  <style>
+      /* CUSTOM RULES REPAIR */
+    .product-list-item .product-list-item-price .amount {
+      opacity: 0.6;
+      font-size: 16px;
+    }
     
-
+    .goods-item-card .goods-item-card__amount {
+      opacity: 0.6;
+      font-size: 16px;
+    }
+    
+    .goods-item-card .goods-item-card__price {
+      height: 84px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    
+    .goods-item-card .goods-item-card__merchant-discount-badge-stub,
+    .goods-item-card .goods-item-card__merchant-discount-badge {
+      height: 22px;
+      position: absolute;
+      z-index: 10;
+      width: 40px;
+      top: -40px;
+     }
+    /* END CUSTOM RULES REPAIR */
+    
+    .js-init-all-items {
+      display: none;
+    }
+    
+    .custom-product-item-price {
+      display: flex;
+      justify-content: flex-start;
+      padding-top: 4px;
+      padding-bottom: 4px;
+      padding-left: 6px;
+      padding-right: 6px;
+      border: 1px solid #8654cc;
+      flex-direction: column;
+      border-radius: 12px;
+      margin-bottom: 4px;
+      align-items: flex-start;
+      background: var(--pui-bg-layer-02-medium);
+    }
+    
+    .custom-product-item-price .title { 
+      font-size: 10px;
+    }
+    
+    .custom-product-item-price .val { 
+      font-weight: bold;
+      font-size: 18px;
+    }
+    
+    
   </style>`;
 
   const spinnerEl = `
@@ -238,14 +296,37 @@
 </div>`;
 
   const cnSel = {
+    allPages: {
+      productListItem: ['.product-list-item:not([data-parsed])', '.goods-item-card:not([data-parsed])'],
+      productListItemPriceWrapper: [
+        '.product-list-item-price div:first',
+        '.goods-item-card__price div:first'
+      ],
+      productListItemAmount: ['.amount', '.goods-item-card__amount'],
+      productListItemBonus: ['.bonus-amount'],
+      productListItemBonusPercent: ['.bonus-percent'],
+    },
     catalogList: {
       headerCount: ['.catalog-department-header__count'],
-      wrapper: ['.catalog-listing__items', '.cnc-catalog-listing__items'],
+      wrapper: [
+        '.catalog-listing__items',
+        '.cnc-catalog-listing__items',
+        '.personal-listing-items__list'],
       item: ['.catalog-item'],
-      header: ['.catalog-listing-header', '.cnc-catalog-listing__sort'],
+      header: [
+        '.catalog-listing-header',
+        '.cnc-catalog-listing__sort',
+        '.listing-delivery-filters.favorites__delivery-filters',
+      ],
       showMoreBtn: [
         '.catalog-listing__show-more',
-        '.cnc-catalog-listing__show-more'],
+        '.cnc-catalog-listing__show-more',
+        '.personal-listing-items__show-more',
+      ],
+      showMoreBtnSpinner: [
+        '.spinner-inline',
+        '.spinner',
+      ],
       // sortField: ['.catalog-listing-header .sort-field', '.cnc-catalog-listing__sort-wrapper .sort-field'],
     },
     detailPage: {
@@ -333,6 +414,7 @@
 
   function isLocationCatalogPage() {
     return (location.href.includes('/catalog/')
+            || location.href.includes('/personal/favorites/')
             || location.href.includes('/brands/')
             || location.href.includes('/promo-page/'))
         && !location.href.includes('/catalog/details/');
@@ -347,7 +429,8 @@
     let [resource, config] = args;
 
     /* Intercept request */
-    if (resource.includes('/v1/catalogService/catalog/search')) {
+    if (resource.includes('catalogService/catalog/search')
+        || resource.includes('customerGoodsListService/item/list')) {
       // let body = JSON.parse(config.body);
       // body.limit = 4;
       // body.offset = 44;
@@ -359,7 +442,8 @@
     const initRespJson = await initResp.clone().json();
 
     // if (apiSel.catalogList.findIndex(element => element.includes("substring"))) {
-    if (resource.includes('/v1/catalogService/catalog/search')) {
+    if (resource.includes('/v1/catalogService/catalog/search')
+        || resource.includes('customerGoodsListService/item/list')) {
       // initSearchReqConf = !initSearchReqConf ? config : initSearchReqConf;
       // initSearchReqResource = !initSearchReqResource ? resource : initSearchReqResource;
 
@@ -406,16 +490,8 @@
 
   function isLoadingList() {
     // if it has spinner inside show more btn
-    return $el(cnSel.catalogList.showMoreBtn).find('.spinner-inline').length >
-        0;
-  }
-
-  function revalidateItemsCounter() {
-    $('.custom-total-counter').
-    html(
-        `<strong>${getCurrentItemsCount()}</strong> 
-          из <strong>${getTotalItemsCount()}</strong>`,
-    );
+    return $el(cnSel.catalogList.showMoreBtn).
+    findInArr(cnSel.catalogList.showMoreBtnSpinner).length > 0;
   }
 
   let intervalId;
@@ -431,6 +507,14 @@
     }, 1000);
   }
 
+  function revalidateItemsCounter() {
+    $('.custom-total-counter').
+    html(
+        `<strong>${getCurrentItemsCount()}</strong> 
+          из <strong>${getTotalItemsCount()}</strong>`,
+    );
+  }
+
   function getCurrentItemsCount() {
     return $el(cnSel.catalogList.wrapper).
     findInArr(cnSel.catalogList.item).length;
@@ -438,7 +522,7 @@
 
   function getTotalItemsCount() {
     if (window.lastResponseData) {
-      return window.lastResponseData.total;
+      return window.lastResponseData.total || window.lastResponseData['count'];
     }
 
     if ($el(cnSel.catalogList.headerCount).length > 0) {
@@ -652,8 +736,7 @@
     }
     $(stylesCatalogList).appendTo('head');
 
-    let $catalogListHeader = $el(cnSel.catalogList.header);
-    $catalogListHeader.after(`
+    $el(cnSel.catalogList.header).after(`
       <div class='js-init-check-list'></div>
       <div class='custom-actions-wrapper'>
         <label class='custom-actions-item select-item-wrapper'>
@@ -685,8 +768,9 @@
     });
     revalidateItemsCounter();
 
-    const reInitCardsAfterLoad = function() {
+    const reInitCardsAfterLoad = async function() {
       console.log('reInitCardsAfterLoad');
+      await delay(1000);
       addFieldsToCardsInList();
       runCheckIsLoadingList();
     };
@@ -696,18 +780,21 @@
         `<button class='upper-load-btn btn xs'>Загрузить ${spinnerEl}</button>`).
     click(async function() {
       const pageVal = parseInt($('.custom-input-page').val(), 10);
-
       for (let index = 1; index <= pageVal; index++) {
-        $el(cnSel.catalogList.showMoreBtn).trigger('click');
+        // because click not triggering with links
+        if ($el(cnSel.catalogList.showMoreBtn).is('a')) {
+          $el(cnSel.catalogList.showMoreBtn)[0].click();
+        } else {
+          $el(cnSel.catalogList.showMoreBtn).trigger('click');
+        }
 
         await waitUntil(() => {
           return !isLoadingList();
         });
+        await delay();
 
         $el(cnSel.catalogList.showMoreBtn).on('click', reInitCardsAfterLoad);
         revalidateItemsCounter();
-
-        await delay();
       }
     });
 
@@ -762,6 +849,48 @@
     });
   }
 
+  async function initAllProductListItems() {
+    // if ($('.js-init-all-items').length > 0) {
+    //   return false;
+    // }
+    $(stylesAllItems).appendTo('head');
+
+    const createAllItems = () => {
+      const $allItems = $el(cnSel.allPages.productListItem);
+
+      if ($allItems.length > 0) {
+        console.log('initAllProductListItems');
+
+        $allItems.each(function() {
+          const $item = $(this);
+
+          if ($item.attr('data-parsed') && $row.attr('data-parsed') === '1') {
+            return true;
+          }
+          $item.attr('data-parsed', 1);
+
+          const price = parseDigitFromElem(
+              $item.findInArr(cnSel.allPages.productListItemAmount));
+          const bonus = parseDigitFromElem(
+              $item.findInArr(cnSel.allPages.productListItemBonus));
+
+          $item.findInArr(cnSel.allPages.productListItemPriceWrapper).before(`
+          <div class='js-init-all-items'></div>
+          <div class='custom-product-item-price'>
+            <div class='title'>${price}-${bonus} (бонусы)&nbsp;=&nbsp;</div>
+            <div class='val'>${formatterPrice.format(
+              price - bonus)} ₽</div>
+          </div>
+        `);
+        });
+      }
+    };
+
+    await delay(2000);
+
+    setInterval(createAllItems, 3000);
+  }
+
   function initCatalogDetail() {
     if ($('.js-init-check-detail').length > 0) {
       return false;
@@ -801,6 +930,8 @@
 
   const fireEventsAndEntry = () => {
     console.log('fireEventsAndEntry');
+    initAllProductListItems();
+
     if (isLocationDetailsPage()) {
       console.log('initCatalogDetail');
       setTimeout(initCatalogDetail, 2500);
@@ -815,14 +946,20 @@
   let pushState = history.pushState;
   history.pushState = function() {
     pushState.apply(history, arguments);
-    fireEventsAndEntry('pushState', arguments);
+    fireEventsAndEntry();
+  };
+
+  let replaceState = history.replaceState;
+  history.replaceState = function() {
+    replaceState.apply(history, arguments);
+    fireEventsAndEntry();
   };
 
   $(window).bind('popstate', function() {
     fireEventsAndEntry();
   });
 
-  $(function() {
-    fireEventsAndEntry();
-  });
+  // $(function() {
+  //   fireEventsAndEntry();
+  // });
 })();
