@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.6.2
+// @version      1.7.0
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -12,6 +12,125 @@
 // ==/UserScript==
 
 (function() {
+  /* INTERCEPTORS */
+  // let initSearchReqConf;
+  // let initSearchReqResource;
+  const {fetch: originalFetch} = window;
+  window.fetch = async (...args) => {
+    // interceptor loader
+    let [resource, config] = args;
+
+    // console.log('--------------------------------------');
+    // console.log('-----------Intercept request');
+    // console.log('resource');
+    // console.log(resource);
+    // console.log('config');
+    // console.log(config);
+    // console.log('config.body');
+    // console.log(JSON.parse(config.body));
+    /* Intercept request */
+    if (resource.includes('catalogService/catalog/search')
+        || resource.includes('customerGoodsListService/item/list')) {
+      // let body = JSON.parse(config.body);
+      // body.limit = 4;
+      // body.offset = 44;
+      // config.body = JSON.stringify(body);
+    }
+
+    // создание заказа в реквесте также
+    // discounts: [{"type": "BONUS", "amount": 251 }]
+    // https://megamarket.ru/api/mobile/v1/checkoutService/order/create
+
+    if (resource.includes('checkoutService/checkout/calculate')) {
+      let body = JSON.parse(config.body);
+      if (body.hasOwnProperty('discounts') && body.discounts.length > 0) {
+        const discObj = body.discounts.find(o => o.type === 'BONUS');
+
+        if (discObj) {
+          body.discounts.map((o, i) => {
+            if (o.type === 'BONUS') {
+              body.discounts[i] = {
+                type: o.type,
+                amount: getBonusDiscountValue(),
+              };
+            }
+          });
+        }
+      }
+
+      config.body = JSON.stringify(body);
+    }
+
+    /* Intercept response */
+    let initResp = await originalFetch(resource, config);
+    const initRespJson = await initResp.clone().json();
+
+    // console.log('-----------Intercept response');
+    // console.log('resource');
+    // console.log(resource);
+    // console.log('initRespJson');
+    // console.log(initRespJson);
+
+    if (resource.includes('/checkoutService/checkout/calculate')) {
+      if (!window.maxBonusLoyaltyAmount) {
+        window.maxBonusLoyaltyAmount = initRespJson.maxBonusLoyaltyAmount;
+      }
+
+      window.bonusDiscount = 0;
+      if (initRespJson.hasOwnProperty('discounts') && initRespJson.discounts.length > 0) {
+        window.bonusDiscount = initRespJson.discounts.find(o => o.type === 'BONUS')?.amount;
+      }
+
+      updateBonusTitle();
+    }
+
+    // if (apiSel.catalogList.findIndex(element => element.includes('substring'))) {
+    if (resource.includes('/v1/catalogService/catalog/search')
+        || resource.includes('customerGoodsListService/item/list')) {
+      // initSearchReqConf = !initSearchReqConf ? config : initSearchReqConf;
+      // initSearchReqResource = !initSearchReqResource ? resource : initSearchReqResource;
+
+      // const {
+      //   items: initItems,
+      //   total,
+      //   limit,
+      //   listingSize,
+      //   offset,
+      // } = initRespJson;
+      // const respJsonArr = [initRespJson];
+      // const numbTotal = parseInt(total, 10);
+      // const numbLimit = parseInt(limit, 10);
+      // const numbOffset = parseInt(offset, 10);
+      // const cycleCount = Math.ceil(numbTotal / numbLimit);
+      // const actualOffset = numbOffset || numbLimit;
+      // for (let index = 1; index < cycleCount - 15; index++) {
+      // console.log(index);
+      // console.log(actualOffset * index);
+      // await delay();
+      // newBody.offset = actualOffset * index;
+      // config.body = JSON.stringify(newBody);
+      // const cycleResp = await originalFetch(resource, config);
+      // let cycleRespJson = await cycleResp.clone().json();
+      // const { items: secondItems } = secondRespJson;
+      // respJsonArr.push(cycleRespJson);
+      // }
+
+      // const allItems = respJsonArr.reduce(
+      //   (accumulator, currentValue) => accumulator.concat(currentValue.items),
+      //   [],
+      // );
+      // const finalRespJson = respJsonArr[respJsonArr.length - 1];
+      // finalRespJson.items = [...allItems];
+
+      window.lastRequestData = args;
+      window.lastResponseData = initRespJson;
+
+      return new Response(JSON.stringify(initRespJson));
+    }
+
+    return initResp;
+  };
+
   /* ---------- CONSTANTS AND ELEMS ---------- */
   const stylesCatalogList = `
   <style>
@@ -161,7 +280,6 @@
       right: 0;
       bottom: 0;
     }
-    
   </style>`;
   const stylesDetail = `
   <style>
@@ -292,17 +410,81 @@
     
     
   </style>`;
-
+  const stylesCheckout = `
+  <style>
+    /* CUSTOM RULES REPAIR */
+    .checkout-desktop-discount-block .checkout-bonus-selector .toggle.field {
+      opacity: 0;
+    }
+    /* END CUSTOM RULES REPAIR */
+  
+    .js-init-check-checkout {}
+  
+    .custom-bonus-input-wrapper {
+       display: flex;
+       width: 398px;
+       align-items: center;
+       justify-content: space-between;
+       position: relative;
+       margin-bottom: 8px;
+    }
+    
+    .custom-bonus-input-wrapper .custom-actions-item {
+       display: flex;
+       flex-direction: column;
+       width: 100%; 
+    }
+    
+    .custom-bonus-input-wrapper .custom-actions-item .custom-bonus-input-checkout {
+      background: transparent;
+      font-family: SB Sans Text,sans-serif;
+      height: 36px;
+      min-height: 36px;
+      font-size: 14px;
+      letter-spacing: -.02em;
+      line-height: 18px;
+      border-radius: 8px;
+      padding: 8px;
+      border: 1px solid var(--pui-border-primary);
+      width: 100%;
+    }
+    .custom-bonus-input-wrapper .custom-actions-item .custom-bonus-input-checkout[disabled] {
+      color: var(--pui-text-disabled);
+      cursor: not-allowed;
+    }
+    
+    .custom-bonus-input-wrapper .custom-actions-item .custom-bonus-input-checkout[disabled],
+    .custom-bonus-input-wrapper .custom-actions-item .custom-bonus-input-checkout[readonly] {
+      background: var(--pui-input-bg-disabled);
+      border-color: var(--pui-input-border-disabled);
+    }
+    
+    .custom-bonus-input-wrapper .custom-btn-apply-bonus {
+      position: absolute;
+      right: 0;
+      top: 30%;
+    }
+    
+    .custom-bonus-input-wrapper .custom-btn-apply-bonus .spinner-inline {
+      display: none;
+      margin-left: 5px;
+    }
+    .custom-bonus-input-wrapper .custom-btn-apply-bonus.is-loading .spinner-inline {
+      display: inline-block;
+    }
+  </style>`;
   const spinnerEl = `
   <div class='spinner-inline'><svg id='spinner-8_12_1_0_0-6' viewBox='0 0 100 100' class='spinner'><circle r='12' cx='88' cy='50' class='circle' style='animation-delay: -0.6s; animation-duration: 0.6s;'></circle><circle r='12' cx='76.87005768508881' cy='76.8700576850888' class='circle' style='animation-delay: -0.525s; animation-duration: 0.6s;'></circle><circle r='12' cx='50' cy='88' class='circle' style='animation-delay: -0.45s; animation-duration: 0.6s;'></circle><circle r='12' cx='23.129942314911197' cy='76.87005768508881' class='circle' style='animation-delay: -0.375s; animation-duration: 0.6s;'></circle><circle r='12' cx='12' cy='50.00000000000001' class='circle' style='animation-delay: -0.3s; animation-duration: 0.6s;'></circle><circle r='12' cx='23.129942314911187' cy='23.129942314911197' class='circle' style='animation-delay: -0.225s; animation-duration: 0.6s;'></circle><circle r='12' cx='49.99999999999999' cy='12' class='circle' style='animation-delay: -0.15s; animation-duration: 0.6s;'></circle><circle r='12' cx='76.8700576850888' cy='23.129942314911187' class='circle' style='animation-delay: -0.075s; animation-duration: 0.6s;'></circle></svg>
 </div>`;
 
   const cnSel = {
     allPages: {
-      productListItem: ['.product-list-item:not([data-parsed])', '.goods-item-card:not([data-parsed])'],
+      productListItem: [
+        '.product-list-item:not([data-parsed])',
+        '.goods-item-card:not([data-parsed])'],
       productListItemPriceWrapper: [
         '.product-list-item-price div:first',
-        '.goods-item-card__price div:first'
+        '.goods-item-card__price div:first',
       ],
       productListItemAmount: ['.amount', '.goods-item-card__amount'],
       productListItemBonus: ['.bonus-amount'],
@@ -349,6 +531,14 @@
       priceOfferPerRow: ['.product-offer-price .product-offer-price__amount'],
       // productOffersItemsForFind: ['.product-offer'],
     },
+    checkoutPage: {
+      bonusBlock: [
+        '.checkout-desktop-discount-block .checkout-container-desktop.checkout-base-desktop__container',
+      ],
+      bonusBlockSelector: ['.checkout-bonus-selector'],
+      bonusBlockTitle: ['.bonus-selector-title'],
+      bonusBlockBonusApplyBtn: ['.checkout-bonus-selector .toggle input']
+    },
     custom: {
       initList: '',
     },
@@ -387,10 +577,13 @@
     return $elem;
   }
 
-  function parseDigitFromElem($elem) {
-    $elem = $($elem);
+  function parseDigitFromElemOrText($elemOrText) {
+    let replaceVal = $elemOrText;
+    if (typeof $elemOrText !== 'string') {
+      replaceVal = $($elemOrText).text();
+    }
 
-    return Number.parseFloat($elem.text().replace(/\D/g, '')) || 0;
+    return Number.parseFloat(replaceVal.replace(/\D/g, '')) || 0;
   }
 
   const getRandomMs = (min = 800, max = 2000) => {
@@ -422,74 +615,16 @@
         && !location.href.includes('/catalog/details/');
   }
 
+  function isCheckoutPage() {
+    return location.href.includes('/multicart/checkout/');
+  }
+
+  function getBonusDiscountValue() {
+    return Number.parseFloat($('.js-input-bonus-checkout').val()) || 0;
+  }
+
+
   /* ---------- PAGE CATALOG LIST ---------- */
-  // let initSearchReqConf;
-  // let initSearchReqResource;
-  const {fetch: originalFetch} = window;
-  window.fetch = async (...args) => {
-    // interceptor loader
-    let [resource, config] = args;
-
-    /* Intercept request */
-    if (resource.includes('catalogService/catalog/search')
-        || resource.includes('customerGoodsListService/item/list')) {
-      // let body = JSON.parse(config.body);
-      // body.limit = 4;
-      // body.offset = 44;
-      // config.body = JSON.stringify(body);
-    }
-
-    /* Intercept response */
-    let initResp = await originalFetch(resource, config);
-    const initRespJson = await initResp.clone().json();
-
-    // if (apiSel.catalogList.findIndex(element => element.includes("substring"))) {
-    if (resource.includes('/v1/catalogService/catalog/search')
-        || resource.includes('customerGoodsListService/item/list')) {
-      // initSearchReqConf = !initSearchReqConf ? config : initSearchReqConf;
-      // initSearchReqResource = !initSearchReqResource ? resource : initSearchReqResource;
-
-      // const {
-      //   items: initItems,
-      //   total,
-      //   limit,
-      //   listingSize,
-      //   offset,
-      // } = initRespJson;
-      // const respJsonArr = [initRespJson];
-      // const numbTotal = parseInt(total, 10);
-      // const numbLimit = parseInt(limit, 10);
-      // const numbOffset = parseInt(offset, 10);
-      // const cycleCount = Math.ceil(numbTotal / numbLimit);
-      // const actualOffset = numbOffset || numbLimit;
-      // for (let index = 1; index < cycleCount - 15; index++) {
-      // console.log(index);
-      // console.log(actualOffset * index);
-      // await delay();
-      // newBody.offset = actualOffset * index;
-      // config.body = JSON.stringify(newBody);
-      // const cycleResp = await originalFetch(resource, config);
-      // let cycleRespJson = await cycleResp.clone().json();
-      // const { items: secondItems } = secondRespJson;
-      // respJsonArr.push(cycleRespJson);
-      // }
-
-      // const allItems = respJsonArr.reduce(
-      //   (accumulator, currentValue) => accumulator.concat(currentValue.items),
-      //   [],
-      // );
-      // const finalRespJson = respJsonArr[respJsonArr.length - 1];
-      // finalRespJson.items = [...allItems];
-
-      window.lastRequestData = args;
-      window.lastResponseData = initRespJson;
-
-      return new Response(JSON.stringify(initRespJson));
-    }
-
-    return initResp;
-  };
-
   function isLoadingList() {
     // if it has spinner inside show more btn
     return $el(cnSel.catalogList.showMoreBtn).
@@ -499,18 +634,18 @@
   let intervalId;
 
   function runCheckIsLoadingList() {
-    $('.upper-load-btn').addClass('is-loading').prop('disabled', true);
+    $('.js-btn-upper-load').addClass('is-loading').prop('disabled', true);
 
     intervalId = setInterval(function() {
       if (!isLoadingList()) {
         clearInterval(intervalId);
-        $('.upper-load-btn').removeClass('is-loading').prop('disabled', false);
+        $('.js-btn-upper-load').removeClass('is-loading').prop('disabled', false);
       }
     }, 1000);
   }
 
   function revalidateItemsCounter() {
-    $('.custom-total-counter').
+    $('.js-total-counter').
     html(
         `<strong>${getCurrentItemsCount()}</strong> 
           из <strong>${getTotalItemsCount()}</strong>`,
@@ -523,20 +658,21 @@
   }
 
   function getTotalItemsCount() {
+    let totalCount;
+
     if (window.lastResponseData) {
-      return window.lastResponseData.total || window.lastResponseData['count'];
+      totalCount = window.lastResponseData.total || window.lastResponseData['count'];
     }
 
     if ($el(cnSel.catalogList.headerCount).length > 0) {
-      return parseInt(
+      totalCount = parseInt(
           $el(cnSel.catalogList.headerCount).text().replace(/\D/g, ''));
     }
 
-    return 0;
+    return totalCount || 0;
   }
 
-  let catalogListingItemsDefaultArr = [];
-
+  let defaultSortIndex = 1;
   function addFieldsToCardsInList($cards) {
     if (!$cards) {
       let $catalogListingItemsWrapper = $el(cnSel.catalogList.wrapper);
@@ -549,12 +685,13 @@
         return true;
       }
       $card.attr('data-parsed', 1);
+      $card.attr('data-sort-index', defaultSortIndex);
+      defaultSortIndex++;
 
-      catalogListingItemsDefaultArr.push($card);
       $itemMoney = $card.find('.item-money');
-      $itemBonusVal = parseDigitFromElem(
+      $itemBonusVal = parseDigitFromElemOrText(
           $itemMoney.find('.item-bonus .bonus-amount'));
-      $itemPriceVal = parseDigitFromElem($itemMoney.find('.item-price'));
+      $itemPriceVal = parseDigitFromElemOrText($itemMoney.find('.item-price'));
 
       $itemMoney.after(`
         <div class='money-benefit'>
@@ -602,9 +739,9 @@
             cnSel.detailPagePrices.productOffersItems);
 
         const sortedByMostProfit = _.orderBy($productOffersItems, function(o) {
-          const price = parseDigitFromElem(
+          const price = parseDigitFromElemOrText(
               $(o).findInArr(cnSel.detailPagePrices.priceOfferPerRow));
-          const bonus = parseDigitFromElem(
+          const bonus = parseDigitFromElemOrText(
               $(o).findInArr(cnSel.detailPagePrices.priceBonusPerRow));
           return price - bonus;
         }, ['asc']);
@@ -623,7 +760,7 @@
             cnSel.detailPagePrices.productOffersItems);
 
         const sortedByMostBonus = _.orderBy($productOffersItems, function(o) {
-          const bonusPercent = parseDigitFromElem(
+          const bonusPercent = parseDigitFromElemOrText(
               $(o).findInArr(cnSel.detailPagePrices.pricePercentPerRow));
 
           return bonusPercent;
@@ -647,16 +784,16 @@
         let sortedByPricePrior = [];
 
         sortedByPricePrior = _.orderBy($productOffersItems, function(o) {
-          const bonusPercent = parseDigitFromElem(
+          const bonusPercent = parseDigitFromElemOrText(
               $(o).findInArr(cnSel.detailPagePrices.pricePercentPerRow));
 
           return bonusPercent;
         }, 'desc');
 
         sortedByPricePrior = _.orderBy(sortedByPricePrior, function(o) {
-          const price = parseDigitFromElem(
+          const price = parseDigitFromElemOrText(
               $(o).findInArr(cnSel.detailPagePrices.priceOfferPerRow));
-          const bonus = parseDigitFromElem(
+          const bonus = parseDigitFromElemOrText(
               $(o).findInArr(cnSel.detailPagePrices.priceBonusPerRow));
 
           return price - bonus;
@@ -681,8 +818,8 @@
 
       $productOfferPrice = $row.find('.product-offer-price');
       $priceAmountEl = $productOfferPrice.find('.product-offer-price__amount');
-      $priceAmountVal = parseDigitFromElem($priceAmountEl);
-      $bonusAmountVal = parseDigitFromElem(
+      $priceAmountVal = parseDigitFromElemOrText($priceAmountEl);
+      $bonusAmountVal = parseDigitFromElemOrText(
           $productOfferPrice.find('.money-bonus .bonus-amount'),
       );
 
@@ -729,6 +866,17 @@
     });
   }
 
+  function updateBonusTitle(from = window.bonusDiscount, total) {
+    if (!total) {
+      const titleParts = $el(cnSel.checkoutPage.bonusBlock)
+      .findInArr(cnSel.checkoutPage.bonusBlockTitle).text().replace('.',',').split(',');
+      total = parseDigitFromElemOrText(titleParts[1]);
+    }
+
+    const title = `Спишем ${formatterPrice.format(from)}, всего у вас ${formatterPrice.format(total)}. Доступно списать ${window.maxBonusLoyaltyAmount}`;
+    $el(cnSel.checkoutPage.bonusBlock).findInArr(cnSel.checkoutPage.bonusBlockTitle).html(title)
+  }
+
   /* ---------- INIT BLOCK ---------- */
   function initCatalogList() {
     addFieldsToCardsInList();
@@ -745,19 +893,21 @@
           <span>Сортировка</span>
           <select class='field sm custom-select-sort'>
             <option value='none'>Нет сортировки</option>
-            <option value='by-bonus-percent'>По проценту бонуса</option>
-            <option value='by-bonus-size'>По размеру бонуса</option>
-            <option value='by-final-price'>По значению цена-бонус</option>
+            <option value='by-final-price'>Самые выгодные (цена-бонус)</option>
+            <option value='by-bonus-percent'>Самый большой процент бонуса</option>
+            <option value='by-bonus-size'>Самая большая сумма бонуса</option>
+            <option value='by-price-desc'>По цене (сперва дороже ↑)</option>
+            <option value='by-price-asc'>По цене (сперва дешевле ↓)</option>
           </select>
           <div class='custom-notion'>*Применяется только к результатам на странице</div>
         </label>
         <label class='custom-actions-item input-item-wrapper'>
           <span>Кол. стр для загрузки</span>
-          <input class='custom-input-page' type='number' value='1' min='1' max='10' />
+          <input class='js-input-page custom-input-page' type='number' value='1' min='1' max='10' />
         </label>
-        <div class='custom-total-counter'></div>
+        <div class='custom-total-counter js-total-counter'></div>
       </div>`);
-    $('.custom-input-page').on('change', function() {
+    $('.js-input-page').on('change', function() {
       const val = parseInt($(this).val().replace(/\D/g, ''), 10);
 
       if (val < 1) {
@@ -779,9 +929,9 @@
     $el(cnSel.catalogList.showMoreBtn).on('click', reInitCardsAfterLoad);
 
     var $upperBtn = $(
-        `<button class='upper-load-btn btn xs'>Загрузить ${spinnerEl}</button>`).
+        `<button class='js-btn-upper-load upper-load-btn btn xs'>Загрузить ${spinnerEl}</button>`).
     click(async function() {
-      const pageVal = parseInt($('.custom-input-page').val(), 10);
+      const pageVal = parseInt($('.js-input-page').val(), 10);
       for (let index = 1; index <= pageVal; index++) {
         // because click not triggering with links
         if ($el(cnSel.catalogList.showMoreBtn).is('a')) {
@@ -808,16 +958,34 @@
           cnSel.catalogList.item);
 
       if ($(this).val() === 'none') {
-        // console.log(catalogListingItemsDefaultArr);
-        // console.log($catalogListingItems);
-        $(catalogListingItemsDefaultArr).appendTo($catalogListingItemsWrapper);
+        $catalogListingItems.sort(function(a, b) {
+          const sortIndexA = parseDigitFromElemOrText($(a).attr('data-sort-index'));
+
+          const sortIndexB = parseDigitFromElemOrText($(b).attr('data-sort-index'));
+
+          return sortIndexA - sortIndexB;
+        }).appendTo($catalogListingItemsWrapper);
+      }
+
+      if ($(this).val() === 'by-final-price') {
+        $catalogListingItems.sort(function(a, b) {
+          const bonusAmountA = parseDigitFromElemOrText(
+              $(a).find(`.item-bonus .bonus-amount`));
+          const priceA = parseDigitFromElemOrText($(a).find('.item-price'));
+
+          const bonusAmountB = parseDigitFromElemOrText(
+              $(b).find(`.item-bonus .bonus-amount`));
+          const priceB = parseDigitFromElemOrText($(b).find('.item-price'));
+
+          return (priceA - bonusAmountA) - (priceB - bonusAmountB);
+        }).appendTo($catalogListingItemsWrapper);
       }
 
       if ($(this).val() === 'by-bonus-percent') {
         $catalogListingItems.sort(function(a, b) {
-          const bonusPercentB = parseDigitFromElem(
+          const bonusPercentB = parseDigitFromElemOrText(
               $(b).find(`.item-bonus .bonus-percent`));
-          const bonusPercentA = parseDigitFromElem(
+          const bonusPercentA = parseDigitFromElemOrText(
               $(a).find(`.item-bonus .bonus-percent`));
 
           return bonusPercentB - bonusPercentA;
@@ -826,26 +994,34 @@
 
       if ($(this).val() === 'by-bonus-size') {
         $catalogListingItems.sort(function(a, b) {
-          const bonusAmountB = parseDigitFromElem(
+          const bonusAmountB = parseDigitFromElemOrText(
               $(b).find(`.item-bonus .bonus-amount`));
-          const bonusAmountA = parseDigitFromElem(
+          const bonusAmountA = parseDigitFromElemOrText(
               $(a).find(`.item-bonus .bonus-amount`));
 
           return bonusAmountB - bonusAmountA;
         }).appendTo($catalogListingItemsWrapper);
       }
 
-      if ($(this).val() === 'by-final-price') {
+      if ($(this).val() === 'by-price-desc') {
         $catalogListingItems.sort(function(a, b) {
-          const bonusAmountA = parseDigitFromElem(
-              $(a).find(`.item-bonus .bonus-amount`));
-          const priceA = parseDigitFromElem($(a).find('.item-price'));
+          const priceB = parseDigitFromElemOrText(
+              $(b).find(`.item-money .item-price`));
+          const priceA = parseDigitFromElemOrText(
+              $(a).find(`.item-money .item-price`));
 
-          const bonusAmountB = parseDigitFromElem(
-              $(b).find(`.item-bonus .bonus-amount`));
-          const priceB = parseDigitFromElem($(b).find('.item-price'));
+          return priceB - priceA;
+        }).appendTo($catalogListingItemsWrapper);
+      }
 
-          return (priceA - bonusAmountA) - (priceB - bonusAmountB);
+      if ($(this).val() === 'by-price-asc') {
+        $catalogListingItems.sort(function(a, b) {
+          const priceB = parseDigitFromElemOrText(
+              $(b).find(`.item-money .item-price`));
+          const priceA = parseDigitFromElemOrText(
+              $(a).find(`.item-money .item-price`));
+
+          return priceA - priceB;
         }).appendTo($catalogListingItemsWrapper);
       }
     });
@@ -871,9 +1047,9 @@
           }
           $item.attr('data-parsed', 1);
 
-          const price = parseDigitFromElem(
+          const price = parseDigitFromElemOrText(
               $item.findInArr(cnSel.allPages.productListItemAmount));
-          const bonus = parseDigitFromElem(
+          const bonus = parseDigitFromElemOrText(
               $item.findInArr(cnSel.allPages.productListItemBonus));
 
           $item.findInArr(cnSel.allPages.productListItemPriceWrapper).before(`
@@ -902,13 +1078,13 @@
     const $priceCard = $el(cnSel.detailPage.priceCard);
     const $priceBlockForInsert = $priceCard.findInArr(
         cnSel.detailPage.priceInCardBlock);
-    const $productPriceVal = parseDigitFromElem(
+    const $productPriceVal = parseDigitFromElemOrText(
         $priceCard.findInArr(cnSel.detailPage.priceInCardVal));
 
     /* Init main card price */
-    const $bonusAmountSberPayVal = parseDigitFromElem(
+    const $bonusAmountSberPayVal = parseDigitFromElemOrText(
         $el(cnSel.detailPage.bonusAmount)[0]);
-    const bonusAmountOtherVal = parseDigitFromElem(
+    const bonusAmountOtherVal = parseDigitFromElemOrText(
         $el(cnSel.detailPage.bonusAmount)[1]);
 
     $priceBlockForInsert.after(`
@@ -930,9 +1106,73 @@
     addPricesSortAndFieldsInDetails();
   }
 
+  function initCheckoutPage() {
+    if ($('.js-init-check-checkout').length > 0) {
+      return false;
+    }
+    $(stylesCheckout).appendTo('head');
+    const getSwitcherVal = () => {
+      return $el(cnSel.checkoutPage.bonusBlock).findInArr(cnSel.checkoutPage.bonusBlockBonusApplyBtn).val() === 'true'
+    }
+
+    const $bonusBlock = $el(cnSel.checkoutPage.bonusBlock);
+
+    const $bonusBlockForInsert = $bonusBlock.findInArr(
+        cnSel.checkoutPage.bonusBlockSelector);
+
+    $bonusBlockForInsert.before(`
+      <div class='custom-bonus-input-wrapper js-init-check-checkout'>
+        <label class='custom-actions-item input-item-wrapper'>
+          <span>Кол-во бонусов для списания</span>
+          <input
+            type='text'
+            class='custom-bonus-input-checkout js-input-bonus-checkout'
+            ${getSwitcherVal() && 'disabled="true"'} />
+        </label>
+      </div>`
+    );
+    $('.js-input-bonus-checkout').on('change', function() {
+      const val = parseInt($(this).val().replace(/\D/g, ''), 10);
+
+      if (val < 1) {
+        $(this).val(1);
+      }
+
+      if (val > window.maxBonusLoyaltyAmount) {
+        $(this).val(window.maxBonusLoyaltyAmount);
+      }
+    });
+
+    var $applyBtn = $(
+        `<button class='custom-btn-apply-bonus js-btn-apply-bonus btn-link sm'>
+          <span class='js-btn-apply-text'>Применить</span> ${spinnerEl}
+        </button>`).
+    click(async function() {
+      $bonusBlock.findInArr(cnSel.checkoutPage.bonusBlockBonusApplyBtn).trigger('click');
+      updateBonusTitle();
+      setTimeout(()=>{
+        $('.js-input-bonus-checkout').prop('disabled', getSwitcherVal());
+
+        const applyText = $('.js-btn-apply-text');
+
+        applyText.text('Отменить');
+        if (!getSwitcherVal()) {
+          applyText.text('Применить');
+        }
+      }, 1000);
+    });
+
+    $('.custom-bonus-input-wrapper').append($applyBtn);
+  }
+
   const fireEventsAndEntry = () => {
     console.log('fireEventsAndEntry');
     initAllProductListItems();
+
+    if (isCheckoutPage()) {
+      console.log('initCheckoutPage');
+      setTimeout(initCheckoutPage, 2500);
+    }
 
     if (isLocationDetailsPage()) {
       console.log('initCatalogDetail');
