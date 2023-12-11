@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.7.0
+// @version      1.7.1
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -132,6 +132,16 @@
   };
 
   /* ---------- CONSTANTS AND ELEMS ---------- */
+  const stylesCommon = `
+  <style>
+    /* CUSTOM RULES REPAIR */
+    .item-bonus .bonus-percent {
+      font-size: 12px;
+      line-height: 12px;
+      font-weight: bold;
+      height: 13px;
+    }
+  </style>`;
   const stylesCatalogList = `
   <style>
     /* CUSTOM RULES REPAIR */
@@ -1167,6 +1177,7 @@
 
   const fireEventsAndEntry = () => {
     console.log('fireEventsAndEntry');
+    $(stylesCommon).appendTo('head');
     initAllProductListItems();
 
     if (isCheckoutPage()) {
