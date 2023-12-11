@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.7.1
+// @version      1.7.2
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -135,11 +135,11 @@
   const stylesCommon = `
   <style>
     /* CUSTOM RULES REPAIR */
-    .item-bonus .bonus-percent {
-      font-size: 12px;
-      line-height: 12px;
-      font-weight: bold;
-      height: 13px;
+    .bonus-percent {
+      font-size: 12px !important;
+      line-height: 12px !important;
+      font-weight: bold !important;
+      height: 13px !important;
     }
   </style>`;
   const stylesCatalogList = `
