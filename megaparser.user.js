@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.7.3
+// @version      1.8.0
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -482,6 +482,43 @@
     .custom-bonus-input-wrapper .custom-btn-apply-bonus.is-loading .spinner-inline {
       display: inline-block;
     }
+    
+    .custom-bonus-precheck-wrapper {
+      display: flex;
+      padding-top: 8px;
+      padding-bottom: 8px;
+      padding-left: 12px;
+      padding-right: 12px;
+      border: 1px solid #8654cc;
+      border-radius: 12px;
+      margin-top: 15px;
+      margin-bottom: 15px;
+      align-items: center;
+      flex-direction: column;
+      background: var(--pui-bg-layer-02-medium);
+    }
+    
+    .custom-bonus-precheck-wrapper .price-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      padding-top: 2px;
+      padding-bottom: 2px;
+    }
+    
+    .custom-bonus-precheck-wrapper .price-item:first-child {
+      border-bottom: 1px solid #BCC7CF;
+    }
+    
+    .custom-bonus-precheck-wrapper .price-item .title { 
+      font-size: 12px;
+    }
+    
+    .custom-bonus-precheck-wrapper .price-item .val { 
+      font-weight: bold;
+      font-size: 18px;
+    }
   </style>`;
   const spinnerEl = `
   <div class='spinner-inline'><svg id='spinner-8_12_1_0_0-6' viewBox='0 0 100 100' class='spinner'><circle r='12' cx='88' cy='50' class='circle' style='animation-delay: -0.6s; animation-duration: 0.6s;'></circle><circle r='12' cx='76.87005768508881' cy='76.8700576850888' class='circle' style='animation-delay: -0.525s; animation-duration: 0.6s;'></circle><circle r='12' cx='50' cy='88' class='circle' style='animation-delay: -0.45s; animation-duration: 0.6s;'></circle><circle r='12' cx='23.129942314911197' cy='76.87005768508881' class='circle' style='animation-delay: -0.375s; animation-duration: 0.6s;'></circle><circle r='12' cx='12' cy='50.00000000000001' class='circle' style='animation-delay: -0.3s; animation-duration: 0.6s;'></circle><circle r='12' cx='23.129942314911187' cy='23.129942314911197' class='circle' style='animation-delay: -0.225s; animation-duration: 0.6s;'></circle><circle r='12' cx='49.99999999999999' cy='12' class='circle' style='animation-delay: -0.15s; animation-duration: 0.6s;'></circle><circle r='12' cx='76.8700576850888' cy='23.129942314911187' class='circle' style='animation-delay: -0.075s; animation-duration: 0.6s;'></circle></svg>
@@ -504,21 +541,22 @@
       headerCount: ['.catalog-department-header__count'],
       wrapper: [
         '.catalog-items-list',
-        //OLD?
+        //OLD legacy below?
         '.catalog-listing__items',
         '.cnc-catalog-listing__items',
         '.personal-listing-items__list'],
       item: ['.catalog-item'],
       header: [
         '.catalog-listing-controls',
-        //OLD?
+        //OLD legacy below?
         '.catalog-listing-header',
         '.cnc-catalog-listing__sort',
         '.listing-delivery-filters.favorites__delivery-filters',
       ],
       showMoreBtn: [
         '.catalog-items-list__show-more',
-        //OLD?
+        '.personal-listing-pager__show-more',
+        //OLD legacy below?
         '.catalog-listing__show-more',
         '.cnc-catalog-listing__show-more',
         '.personal-listing-items__show-more',
@@ -553,7 +591,19 @@
       ],
       bonusBlockSelector: ['.checkout-bonus-selector'],
       bonusBlockTitle: ['.bonus-selector-title'],
-      bonusBlockBonusApplyBtn: ['.checkout-bonus-selector .toggle input']
+      bonusBlockBonusApplyBtn: ['.checkout-bonus-selector .toggle input'],
+      precheckBlock: [
+        '.precheck-block',
+      ],
+      precheckBlockTotal: [
+        '.precheck-block__total',
+      ],
+      precheckBlockBonus: [
+        '.precheck-block-redesign__bonus-possible',
+      ],
+      precheckBlockBonusAmount: [
+        '.precheck-block-redesign__bonus-possible .bonus-amount',
+      ],
     },
     custom: {
       initList: '',
@@ -1104,7 +1154,7 @@
       <div class='price-and-bonus'>
           <div class='js-init-check-detail'></div>
           <div class='price-item'>
-              <div class='title'>${$productPriceVal}-${$bonusAmountSberPayVal} (за сберпей)&nbsp;=&nbsp;</div>
+              <div class='title'>${$productPriceVal}-${$bonusAmountSberPayVal} (за сбер)&nbsp;=&nbsp;</div>
               <div class='val'>${formatterPrice.format(
         $productPriceVal - $bonusAmountSberPayVal)} ₽</div>
           </div>
@@ -1144,6 +1194,34 @@
         </label>
       </div>`
     );
+
+    const $precheckBlock = $el(cnSel.checkoutPage.precheckBlock);
+    const $precheckBlockForInsert = $precheckBlock.findInArr(
+        cnSel.checkoutPage.precheckBlockBonus);
+    const $productPriceVal = parseDigitFromElemOrText(
+        $precheckBlock.findInArr(cnSel.checkoutPage.precheckBlockTotal));
+    const $bonusAmountSberPayVal = parseDigitFromElemOrText(
+        $el(cnSel.checkoutPage.precheckBlockBonusAmount)[0]);
+    const bonusAmountOtherVal = parseDigitFromElemOrText(
+        $el(cnSel.checkoutPage.precheckBlockBonusAmount)[1]);
+
+
+    // TODO duplicate code
+    $precheckBlockForInsert.after(`
+      <div class='custom-bonus-precheck-wrapper js-init-bonus-precheck'>
+        <div class='price-item'>
+            <div class='title'>${$productPriceVal}-${$bonusAmountSberPayVal} (за сбер)&nbsp;=&nbsp;</div>
+            <div class='val'>${formatterPrice.format(
+      $productPriceVal - $bonusAmountSberPayVal)} ₽</div>
+        </div>
+        <div class='price-item'>
+            <div class='title'>${$productPriceVal}-${bonusAmountOtherVal} (др. способ опл.)&nbsp;=&nbsp;</div>
+            <div class='val'>${formatterPrice.format(
+      $productPriceVal - bonusAmountOtherVal)} ₽</div>
+        </div>
+      </div>`
+    );
+
     $('.js-input-bonus-checkout').on('change', function() {
       const val = parseInt($(this).val().replace(/\D/g, ''), 10);
 
