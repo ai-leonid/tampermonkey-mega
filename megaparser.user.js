@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.7.2
+// @version      1.7.3
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -503,16 +503,22 @@
     catalogList: {
       headerCount: ['.catalog-department-header__count'],
       wrapper: [
+        '.catalog-items-list',
+        //OLD?
         '.catalog-listing__items',
         '.cnc-catalog-listing__items',
         '.personal-listing-items__list'],
       item: ['.catalog-item'],
       header: [
+        '.catalog-listing-controls',
+        //OLD?
         '.catalog-listing-header',
         '.cnc-catalog-listing__sort',
         '.listing-delivery-filters.favorites__delivery-filters',
       ],
       showMoreBtn: [
+        '.catalog-items-list__show-more',
+        //OLD?
         '.catalog-listing__show-more',
         '.cnc-catalog-listing__show-more',
         '.personal-listing-items__show-more',
@@ -702,7 +708,6 @@
       $itemBonusVal = parseDigitFromElemOrText(
           $itemMoney.find('.item-bonus .bonus-amount'));
       $itemPriceVal = parseDigitFromElemOrText($itemMoney.find('.item-price'));
-
       $itemMoney.after(`
         <div class='money-benefit'>
           <div class='benefit-item price-for-one'>
@@ -851,10 +856,8 @@
     await delay(2000);
 
     const $tabSelector = $el(cnSel.detailPagePrices.tabSelector);
-    const isOpenedPrices = $tabSelector.find('a.active').
-    text().
-    toLowerCase().
-    includes('цены');
+    const isOpenedPrices = $tabSelector.find('a.active')
+    .text().toLowerCase().includes('цены');
 
     // if prices already activated init
     if (isOpenedPrices) {
