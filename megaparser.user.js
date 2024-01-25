@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Megamarket extra fields and sorts
 // @namespace    http://tampermonkey.net/
-// @version      1.8.0
+// @version      1.8.1
 // @description  Сортировка на странице по баллам и цены товаров с учётом баллов.
 // @author       ai-leonid
 // @match        *://megamarket.ru/*
@@ -643,6 +643,11 @@
     return $elem;
   }
 
+  // Функция для добавления стилей в head
+  function addStylesToHead(styles) {
+    $(styles).appendTo('head');
+  }
+
   function parseDigitFromElemOrText($elemOrText) {
     let replaceVal = $elemOrText;
     if (typeof $elemOrText !== 'string') {
@@ -947,7 +952,7 @@
     if ($('.js-init-check-list').length > 0) {
       return false;
     }
-    $(stylesCatalogList).appendTo('head');
+    addStylesToHead(stylesCatalogList);
 
     $el(cnSel.catalogList.header).after(`
       <div class='js-init-check-list'></div>
@@ -1094,7 +1099,7 @@
     // if ($('.js-init-all-items').length > 0) {
     //   return false;
     // }
-    $(stylesAllItems).appendTo('head');
+    addStylesToHead(stylesAllItems);
 
     const createAllItems = () => {
       const $allItems = $el(cnSel.allPages.productListItem);
@@ -1137,7 +1142,8 @@
       return false;
     }
 
-    $(stylesDetail).appendTo('head');
+    addStylesToHead(stylesDetail);
+
     const $priceCard = $el(cnSel.detailPage.priceCard);
     const $priceBlockForInsert = $priceCard.findInArr(
         cnSel.detailPage.priceInCardBlock);
@@ -1173,7 +1179,8 @@
     if ($('.js-init-check-checkout').length > 0) {
       return false;
     }
-    $(stylesCheckout).appendTo('head');
+    addStylesToHead(stylesCheckout);
+
     const getSwitcherVal = () => {
       return $el(cnSel.checkoutPage.bonusBlock).findInArr(cnSel.checkoutPage.bonusBlockBonusApplyBtn).val() === 'true'
     }
@@ -1258,7 +1265,8 @@
 
   const fireEventsAndEntry = () => {
     console.log('fireEventsAndEntry');
-    $(stylesCommon).appendTo('head');
+    addStylesToHead(stylesCommon);
+
     initAllProductListItems();
 
     if (isCheckoutPage()) {
